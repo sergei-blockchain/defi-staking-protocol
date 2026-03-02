@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "forge-std/Test.sol";
 
 import "../src/vault/DeFiVault.sol";
+import "../src/vault/DeFiVaultv2.sol";
 import "../src/mock/MockERC20.sol";
 import "../src/vault/MockStrategy.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -212,5 +213,32 @@ contract VaultTest is Test {
         uint256 strat = token.balanceOf(address(strategy));
 
         assertEq(vault.totalAssets(), idle + strat);
+    }
+
+    function testUpgradeToV2() public {
+        // user deposit
+        vm.startPrank(user);
+        token.approve(address(vault), 100e18);
+        vault.deposit(100e18, user);
+        vm.stopPrank();
+
+        // deploy new implementation
+        DeFiVaultV2 newImpl = new DeFiVaultV2();
+
+        // upgrade (owner = address(this))
+        vault.upgradeToAndCall(address(newImpl), "");
+
+        // cast proxy to V2
+        DeFiVaultV2 upgraded = DeFiVaultV2(address(vault));
+
+        // 🔎 check storage preserved
+        assertEq(upgraded.balanceOf(user), 100e18);
+
+        // 🔎 check new function works
+        assertEq(upgraded.version(), "V2");
+
+        // 🔎 test new state variable
+        upgraded.setWithdrawalFee(500);
+        assertEq(upgraded.withdrawalFee(), 500);
     }
 }

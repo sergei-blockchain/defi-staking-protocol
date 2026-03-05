@@ -23,12 +23,26 @@ contract DeFiVault is
     UUPSUpgradeable,
     ReentrancyGuard
 {
-    uint256 public performanceFee; // basis points
+    uint256 public performanceFee;
     address public treasury;
     address public strategy;
     uint256 public lastTotalAssets;
 
-    uint256 private constant MAX_FEE = 2000; // 20%
+    uint256 private constant MAX_FEE = 2000;
+
+    /// EVENTS
+
+    event StrategyUpdated(address indexed oldStrategy, address indexed newStrategy);
+
+    event FeeUpdated(uint256 oldFee, uint256 newFee);
+
+    event Invested(address indexed strategy, uint256 amount);
+
+    event Harvest(uint256 profit, uint256 feeSharesMinted);
+
+    event DepositAssets(address indexed user, uint256 assets, uint256 shares);
+
+    event WithdrawAssets(address indexed user, uint256 assets, uint256 shares);
 
     function initialize(
         address asset_,
@@ -41,7 +55,7 @@ contract DeFiVault is
         __ERC4626_init(IERC20(asset_));
         __ERC20Permit_init("Vault Share");
         __Ownable_init(msg.sender);
-        
+
         treasury = treasury_;
         performanceFee = fee_;
         lastTotalAssets = 0;
@@ -54,12 +68,19 @@ contract DeFiVault is
     {}
 
     function setStrategy(address _strategy) external onlyOwner {
+        address old = strategy;
         strategy = _strategy;
+
+        emit StrategyUpdated(old, _strategy);
     }
 
     function setFee(uint256 newFee) external onlyOwner {
         require(newFee <= MAX_FEE, "Too high");
+
+        uint256 old = performanceFee;
         performanceFee = newFee;
+
+        emit FeeUpdated(old, newFee);
     }
 
     function depositWithPermit(
@@ -97,6 +118,8 @@ contract DeFiVault is
 
         IERC20(asset()).approve(strategy, amount);
         IStrategy(strategy).deposit(amount);
+
+        emit Invested(strategy, amount);
     }
 
     function harvest() external nonReentrant {
@@ -110,12 +133,16 @@ contract DeFiVault is
         uint256 profit = currentAssets - lastTotalAssets;
         uint256 feeAmount = (profit * performanceFee) / 10_000;
 
+        uint256 sharesToMint = 0;
+
         if (feeAmount > 0) {
-            uint256 sharesToMint = convertToShares(feeAmount);
+            sharesToMint = convertToShares(feeAmount);
             _mint(treasury, sharesToMint);
         }
 
         lastTotalAssets = totalAssets();
+
+        emit Harvest(profit, sharesToMint);
     }
 
     function _withdraw(
@@ -134,6 +161,8 @@ contract DeFiVault is
         }
 
         super._withdraw(caller, receiver, owner, assets, shares);
+
+        emit WithdrawAssets(receiver, assets, shares);
     }
 
     function decimals()
@@ -151,7 +180,11 @@ contract DeFiVault is
         returns (uint256)
     {
         uint256 shares = super.deposit(assets, receiver);
+
         lastTotalAssets = totalAssets();
+
+        emit DepositAssets(receiver, assets, shares);
+
         return shares;
     }
 

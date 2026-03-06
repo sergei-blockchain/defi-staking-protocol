@@ -29,7 +29,6 @@ contract MockStrategy {
         return asset.balanceOf(address(this));
     }
 
-    // эмуляция доходности
     function simulateYield(uint256 amount) external {
         asset.transferFrom(msg.sender, address(this), amount);
     }

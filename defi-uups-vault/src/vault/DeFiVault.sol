@@ -38,7 +38,7 @@ contract DeFiVault is
 
     event Invested(address indexed strategy, uint256 amount);
 
-    event Harvest(uint256 profit, uint256 feeSharesMinted);
+    event Report(uint256 profit, uint256 loss, uint256 feeShares);
 
     event DepositAssets(address indexed user, uint256 assets, uint256 shares);
 
@@ -106,6 +106,7 @@ contract DeFiVault is
 
     function totalAssets() public view override returns (uint256) {
         uint256 idle = IERC20(asset()).balanceOf(address(this));
+
         uint256 invested = strategy == address(0)
             ? 0
             : IStrategy(strategy).totalAssets();
@@ -122,27 +123,38 @@ contract DeFiVault is
         emit Invested(strategy, amount);
     }
 
-    function harvest() external nonReentrant {
-        uint256 currentAssets = totalAssets();
+    /// STRATEGY REPORT (Yearn style)
 
-        if (currentAssets <= lastTotalAssets) {
-            lastTotalAssets = currentAssets;
-            return;
+    function report(uint256 profit, uint256 loss) external nonReentrant {
+
+        require(msg.sender == strategy, "not strategy");
+
+        uint256 feeShares = 0;
+
+        if (profit > 0) {
+
+            uint256 feeAssets = (profit * performanceFee) / 10_000;
+
+            if (feeAssets > 0) {
+
+                uint256 supply = totalSupply();
+                uint256 assetsBefore = totalAssets() - profit;
+
+                feeShares =
+                    (feeAssets * supply) /
+                    (assetsBefore - feeAssets);
+
+                _mint(treasury, feeShares);
+            }
         }
 
-        uint256 profit = currentAssets - lastTotalAssets;
-        uint256 feeAmount = (profit * performanceFee) / 10_000;
-
-        uint256 sharesToMint = 0;
-
-        if (feeAmount > 0) {
-            sharesToMint = convertToShares(feeAmount);
-            _mint(treasury, sharesToMint);
+        if (loss > 0) {
+            lastTotalAssets -= loss;
         }
 
         lastTotalAssets = totalAssets();
 
-        emit Harvest(profit, sharesToMint);
+        emit Report(profit, loss, feeShares);
     }
 
     function _withdraw(

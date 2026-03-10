@@ -123,6 +123,15 @@ contract DeFiVault is
         emit Invested(strategy, amount);
     }
 
+    function pricePerShare() public view returns (uint256) {
+
+        uint256 supply = totalSupply();
+
+        if (supply == 0) return 1e18;
+
+        return (totalAssets() * 1e18) / supply;
+    }
+
     /// STRATEGY REPORT (Yearn style)
 
     function report(uint256 profit, uint256 loss) external nonReentrant {
